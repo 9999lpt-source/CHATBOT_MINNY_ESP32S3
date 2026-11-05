@@ -7,7 +7,7 @@ static ButtonCallback pressCallback = NULL;
 // ===== HÀM XỬ LÝ NÚT NHẤN (đọc tín hiệu & chống dội) =====
 static void buttonTask(void *pvParameters)
 {
-	bool stableState = HIGH;	// trạng thái được nhấn (nhấn = HIGH)
+	bool stableState = HIGH;	// trạng thái được nhấn (nhấn = LOW)
 	bool lastReading = HIGH;	// lần đọc trước
 	uint32_t lastChange_ms = 0; // thờ điểm đọc gần nhất
 

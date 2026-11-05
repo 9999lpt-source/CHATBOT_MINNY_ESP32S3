@@ -2,6 +2,7 @@
 #include "controlOled.h"
 #include "button.h"
 #include "wifiManager.h"
+#include "wsClient.h"
 #include <WiFi.h>
 
 int pressCount = 0;

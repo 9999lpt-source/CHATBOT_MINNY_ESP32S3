@@ -1,0 +1,9 @@
+https://github.com/9999lpt-source/CHATBOT_MINNY_ESP32S3/blob/main/include/button.h
+https://github.com/9999lpt-source/CHATBOT_MINNY_ESP32S3/blob/main/include/config.h
+https://github.com/9999lpt-source/CHATBOT_MINNY_ESP32S3/blob/main/include/controlOled.h
+https://github.com/9999lpt-source/CHATBOT_MINNY_ESP32S3/blob/main/include/wifiManager.h
+https://github.com/9999lpt-source/CHATBOT_MINNY_ESP32S3/blob/main/src/button.cpp
+https://github.com/9999lpt-source/CHATBOT_MINNY_ESP32S3/blob/main/src/controlOled.cpp
+https://github.com/9999lpt-source/CHATBOT_MINNY_ESP32S3/blob/main/src/main.cpp
+https://github.com/9999lpt-source/CHATBOT_MINNY_ESP32S3/blob/main/src/wifiManager.cpp
+https://github.com/9999lpt-source/CHATBOT_MINNY_ESP32S3/blob/main/platformio.ini

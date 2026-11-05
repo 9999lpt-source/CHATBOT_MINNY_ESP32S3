@@ -116,7 +116,7 @@ void updateOled()
 		hasNewText = false;
 		xSemaphoreGive(textMutex);
 
-		textWidth = u8g2.getUTF8Width(pendingText.c_str());
+		textWidth = u8g2.getUTF8Width(shownText.c_str());
 		scrollPos = (textWidth > oled::WIDTH) ? oled::WIDTH : (oled::WIDTH - textWidth) / 2;
 	}
 
@@ -131,7 +131,7 @@ void updateOled()
 	}
 
 	u8g2.setCursor(scrollPos, 58);
-	u8g2.print(pendingText);
+	u8g2.print(shownText);
 
 	// Hiệu ứng gương mặt
 	if (currentTime - lastRandom >= randomTime)
