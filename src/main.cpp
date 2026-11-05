@@ -10,8 +10,6 @@ int pressCount = 0;
 // ===== HÀM GỌI KHI NHẤN NÚT =====
 static void onButtonPress()
 {
-	pressCount++;
-	oledSetText(String(pressCount));
 }
 
 // ===== HÀM GỌI KHI THAY ĐỔI TRẠNG THÁI WIFI =====
@@ -34,6 +32,26 @@ static void onWifiStatus(WifiStatus s)
 	default:
 		break;
 	}
+	if (s == WifiStatus::Connected)
+		wsStart();
+	else
+		wsStop();
+}
+
+static void onWsStatus(WsStatus s)
+{
+	switch (s)
+	{
+	case WsStatus::Connected:
+		oledSetText("Đã kết nối Server!");
+		break;
+	case WsStatus::Disconnected:
+		if (WiFi.status() == WL_CONNECTED)
+			oledSetText("Mất kết nối Server");
+		break;
+	default:
+		break;
+	}
 }
 
 void setup()
@@ -43,6 +61,7 @@ void setup()
 	initOled();
 	initButton(onButtonPress);
 	oledSetText("0");
+	initWs(onWsStatus);
 	initWifi(onWifiStatus);
 }
 

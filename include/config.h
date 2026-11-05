@@ -48,7 +48,7 @@ namespace net
 	constexpr const char *WS_HOST = USE_LOCAL_SERVER ? "192.168.1.211" : "chatbot-minny.onrender.com";
 	constexpr uint16_t WS_PORT = USE_LOCAL_SERVER ? 8000 : 443;
 	constexpr bool WS_USE_SSL = !USE_LOCAL_SERVER;
-	constexpr const char *WS_PATH = "ws/minny";
+	constexpr const char *WS_PATH = "/ws/minny";
 	constexpr uint32_t WS_RECONNECT_MS = 3000; // Chờ bao lâu thì thử lại
 	constexpr uint32_t WS_LOOP_MS = 5;
 } // namespace net
