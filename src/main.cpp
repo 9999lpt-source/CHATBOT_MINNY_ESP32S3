@@ -3,6 +3,7 @@
 #include "button.h"
 #include "wifiManager.h"
 #include "wsClient.h"
+#include "protocol.h"
 #include <WiFi.h>
 
 int pressCount = 0;
@@ -38,6 +39,7 @@ static void onWifiStatus(WifiStatus s)
 		wsStop();
 }
 
+// ===== HÀM GỌI KHI THAY ĐỔI TRẠNG THÁI WEBSOCKET =====
 static void onWsStatus(WsStatus s)
 {
 	switch (s)
