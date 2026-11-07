@@ -45,12 +45,14 @@ namespace net
 
 	// ----- WEBSOCKET -----
 	constexpr bool USE_LOCAL_SERVER = true;
-	constexpr const char *WS_HOST = USE_LOCAL_SERVER ? "192.168.1.211" : "chatbot-minny.onrender.com";
+	constexpr const char *WS_HOST = USE_LOCAL_SERVER ? "192.168.1.18" : "chatbot-minny.onrender.com";
 	constexpr uint16_t WS_PORT = USE_LOCAL_SERVER ? 8000 : 443;
 	constexpr bool WS_USE_SSL = !USE_LOCAL_SERVER;
 	constexpr const char *WS_PATH = "/ws/minny";
 	constexpr uint32_t WS_RECONNECT_MS = 3000; // Chờ bao lâu thì thử lại
 	constexpr uint32_t WS_LOOP_MS = 5;
+	constexpr uint8_t WS_CTRL_QUEUE_LEN = 4; // Tối đa 4 tin điều khiển đang chờ
+	constexpr uint16_t WS_MSG_BUF_SIZE = 64; // mảng dựng json (dài nhất ~40 byte)
 } // namespace net
 
 // ===== TASK FreeRTOS =====

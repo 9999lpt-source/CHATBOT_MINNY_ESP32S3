@@ -46,6 +46,7 @@ static void onWsStatus(WsStatus s)
 	{
 	case WsStatus::Connected:
 		oledSetText("Đã kết nối Server!");
+		wsSendControl(ClientMsg::AudioStart, 1); //<-----
 		break;
 	case WsStatus::Disconnected:
 		if (WiFi.status() == WL_CONNECTED)
