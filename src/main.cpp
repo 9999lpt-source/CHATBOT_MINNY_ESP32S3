@@ -8,9 +8,22 @@
 
 int pressCount = 0;
 
+// ===== BỘ ĐẾM LƯỢT =====
+static int32_t turnCounter = 0;
+
 // ===== HÀM GỌI KHI NHẤN NÚT =====
 static void onButtonPress()
 {
+	int32_t turn = turnCounter + 1;
+	if (wsSendControl(ClientMsg::AudioStart, turn)) {
+		turnCounter = turn;
+		Serial.printf("[MAIN] nhan nut -> audio_start luot %ld\n", (long)turn);
+	}
+	else
+    {
+        Serial.println("[MAIN] nhan nut nhung chua gui duoc");
+        oledSetText("Chưa kết nối server, chưa thể gửi tin");
+	}
 }
 
 // ===== HÀM GỌI KHI THAY ĐỔI TRẠNG THÁI WIFI =====
@@ -46,7 +59,6 @@ static void onWsStatus(WsStatus s)
 	{
 	case WsStatus::Connected:
 		oledSetText("Đã kết nối Server!");
-		wsSendControl(ClientMsg::AudioStart, 1); //<-----
 		break;
 	case WsStatus::Disconnected:
 		if (WiFi.status() == WL_CONNECTED)

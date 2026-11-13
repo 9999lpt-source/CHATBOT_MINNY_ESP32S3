@@ -45,7 +45,7 @@ namespace net
 
 	// ----- WEBSOCKET -----
 	constexpr bool USE_LOCAL_SERVER = true;
-	constexpr const char *WS_HOST = USE_LOCAL_SERVER ? "192.168.1.18" : "chatbot-minny.onrender.com";
+	constexpr const char *WS_HOST = USE_LOCAL_SERVER ? "192.168.1.201" : "chatbot-minny.onrender.com";
 	constexpr uint16_t WS_PORT = USE_LOCAL_SERVER ? 8000 : 443;
 	constexpr bool WS_USE_SSL = !USE_LOCAL_SERVER;
 	constexpr const char *WS_PATH = "/ws/minny";
