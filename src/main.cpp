@@ -69,13 +69,6 @@ static void onWsStatus(WsStatus s)
 	}
 }
 
-static void testParse(const char *s) {
-    ServerMessage m = {};
-    bool ok = parseServerMessage(s, strlen(s), m);
-    Serial.printf("[TEST] ok=%d type=%d turn=%ld state=%d code=%d rec=%d \n", 
-                  ok, (int)m.type, (long)m.turn, (int)m.state, (int)m.code, m.recoverable);
-}
-
 void setup()
 {
 	Serial.begin(115200);
