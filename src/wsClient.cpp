@@ -52,7 +52,7 @@ static void onWsEvent(WStype_t type, uint8_t *payload, size_t length)
 
 	// ngắt kết nối
 	case WStype_DISCONNECTED:
-		Serial.println("[WS] Mat ket noi");
+		// Serial.println("[WS] Mat ket noi");
 		setConnected(false);
 		break;
 

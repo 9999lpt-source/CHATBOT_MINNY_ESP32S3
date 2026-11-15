@@ -13,6 +13,11 @@ namespace pin
 	// button
 	constexpr int BUTTON = 2;
 
+	// mic INMP441 (I2S_NUM_1, RX)
+	constexpr int MIC_SCK = 5;
+	constexpr int MIC_WS = 4;
+	constexpr int MIC_SD = 6;
+
 } // namespace pin
 
 // ===== OLED =====
@@ -75,7 +80,19 @@ namespace task
 	constexpr Cfg BUTTON = {"Button_Task", 2048, 2, 1};
 	constexpr Cfg WIFI = {"Wifi_Task", 6144, 2, 0};
 	constexpr Cfg NETWORK = {"Network_Task", 8192, 3, 0};
+	constexpr Cfg MIC = {"Mic_Task", 4096, 5, 1};
 
 } // namespace task
+
+// ===== AUDIO =====
+namespace audio {
+	constexpr uint32_t SAMPLE_RATE = 16000; // Hz
+	constexpr uint32_t FRAME_SAMPLES = 320; // 20ms
+	constexpr int MIC_DMA_COUNT = 4; // số khối DMA
+	constexpr bool MIC_USE_LEFT = true; // dùng kênh trái của INMP441
+	constexpr int MIC_SHIIFT = 15;
+	constexpr uint32_t MIC_READ_TIMEOUT_MS = 1000; // thời gian chờ mic ổn định
+	constexpr uint8_t LEVEL_FREAME = 5; // 5 Khung x 20ms = 100ms	
+}
 
 #endif // CONFIG_H

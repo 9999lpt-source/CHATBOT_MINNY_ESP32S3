@@ -4,6 +4,7 @@
 #include "wifiManager.h"
 #include "wsClient.h"
 #include "protocol.h"
+#include "micCapture.h"
 #include <WiFi.h>
 
 int pressCount = 0;
@@ -122,9 +123,9 @@ void setup()
 	delay(1500);
 	initOled();
 	initButton(onButtonPress);
-	oledSetText("0");
 	initWs(onWsStatus, onWsMessage);
 	initWifi(onWifiStatus);
+	initMic();
 }
 
 // ===== HÀM LOOP =====
