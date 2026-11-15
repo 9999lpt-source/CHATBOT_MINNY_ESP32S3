@@ -9,21 +9,19 @@
 int pressCount = 0;
 
 // ===== BỘ ĐẾM LƯỢT =====
-static int32_t turnCounter = 0;
+static volatile int32_t turnCounter = 0;
 
 // ===== HÀM GỌI KHI NHẤN NÚT =====
 static void onButtonPress()
 {
 	int32_t turn = turnCounter + 1;
-	if (wsSendControl(ClientMsg::AudioStart, turn)) {
-		turnCounter = turn;
-		Serial.printf("[MAIN] nhan nut -> audio_start luot %ld\n", (long)turn);
+	turnCounter = turn;
+	if (!wsSendControl(ClientMsg::AudioStart, turn)) {
+		Serial.println("[MAIN] nhan nut nhung chua gui duoc");
+		oledSetText("Chưa kết nối server, chưa thể gửi tin");
+		return;
 	}
-	else
-    {
-        Serial.println("[MAIN] nhan nut nhung chua gui duoc");
-        oledSetText("Chưa kết nối server, chưa thể gửi tin");
-	}
+	Serial.printf("[%lu] [MAIN] Nhan nut -> audio_start luot %ld\n", (unsigned long)millis(), (long)turn);
 }
 
 // ===== HÀM GỌI KHI THAY ĐỔI TRẠNG THÁI WIFI =====
@@ -55,6 +53,7 @@ static void onWifiStatus(WifiStatus s)
 // ===== HÀM GỌI KHI THAY ĐỔI TRẠNG THÁI WEBSOCKET =====
 static void onWsStatus(WsStatus s)
 {
+    Serial.printf("[%lu] [MAIN] WS status=%d\n", (unsigned long)millis(), (int)s);
 	switch (s)
 	{
 	case WsStatus::Connected:
@@ -69,6 +68,54 @@ static void onWsStatus(WsStatus s)
 	}
 }
 
+// ===== LỌC LỜI THOẠI KHI CÓ LỖI =====
+static const char *errorText(ErrorCode c)
+{
+	switch (c)
+	{
+	case ErrorCode::AudioTooShort:
+		return "Bạn nói quá ngắn";
+	case ErrorCode::SttFailed:
+		return "không nghe rõ, thử lại";
+	case ErrorCode::SttEmpty:
+		return "Không nhận ra giọng nói";
+	case ErrorCode::LlmFailed:
+		return "Lỗi khi suy ";
+	case ErrorCode::TtsFailed:
+		return "Lỗi tạo giọng nói";
+	case ErrorCode::MusicNotFound:
+		return "Không tìm thấy bài hát";
+	default:
+		return "Không có lỗi xảy ra";
+	}
+}
+
+// ===== HÀM GỌI KHI CÓ TIN MỚI TỪ SERVER =====
+static void onWsMessage(const ServerMessage &m)
+{
+	int32_t current = turnCounter;
+	if (m.turn != NO_TURN && m.turn != current)
+	{
+		Serial.printf("[MAIN] Bo tin luot cu: %ld (luot hien tai %ld)\n", (long)m.turn, (long)current);
+		return;
+	}
+
+	switch (m.type)
+	{
+	case ServerMsg::State:
+		if (m.state == ServerState::Transcribing)
+			oledSetText("Đang nhận dạng giọng nói...");
+		else if (m.state == ServerState::Thingking)
+			oledSetText("Đang suy nghĩ...");
+		break;
+	case ServerMsg::Error:
+		oledSetText(errorText(m.code));
+	default:
+		break;
+	}
+}
+
+// ===== HÀM SETUP =====
 void setup()
 {
 	Serial.begin(115200);
@@ -76,10 +123,11 @@ void setup()
 	initOled();
 	initButton(onButtonPress);
 	oledSetText("0");
-	initWs(onWsStatus);
+	initWs(onWsStatus, onWsMessage);
 	initWifi(onWifiStatus);
 }
 
+// ===== HÀM LOOP =====
 void loop()
 {
 	vTaskDelay(pdMS_TO_TICKS(1000));

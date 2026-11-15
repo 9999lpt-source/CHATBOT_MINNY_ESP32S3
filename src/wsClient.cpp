@@ -7,6 +7,7 @@
 // ===== DỮ LIỆU NỘI BỘ =====
 static WebSocketsClient ws;
 static WsStatusCallback statusCallback = NULL;
+static WsMessageCallback messageCallback = NULL;
 static volatile bool wantConnected = false;
 static bool began = false;
 static volatile bool connected = false;
@@ -55,6 +56,24 @@ static void onWsEvent(WStype_t type, uint8_t *payload, size_t length)
 		setConnected(false);
 		break;
 
+	// nhận được ti mới
+	case WStype_TEXT:
+	{
+		ServerMessage m;
+		if (parseServerMessage((const char *)payload, length, m))
+		{
+			if (messageCallback != NULL)
+				messageCallback(m);
+		}
+		else
+		{
+			size_t n = (length < 100) ? length : 100;
+			Serial.printf("[WS] Tin khong hop le (%u byte): %.*s\n",
+							(unsigned)length, (int)n, (const char *)payload);
+		}
+		break;
+	}
+
 	default:
 		break;
 	}
@@ -78,6 +97,8 @@ static void wsTask(void *pvParameters)
 				ws.beginSSL(net::WS_HOST, net::WS_PORT, net::WS_PATH);
 			else
 				ws.begin(net::WS_HOST, net::WS_PORT, net::WS_PATH);
+
+			ws.enableHeartbeat(net::WS_PING_INTERVAL_MS, net::WS_PONG_TIMEOUT_MS, net::WS_PONG_MISS_MAX);
 			began = true;
 		}
 
@@ -121,7 +142,7 @@ static void wsTask(void *pvParameters)
 }
 
 // ===== CẤU HÌNH WEBSOCKET =====
-void initWs(WsStatusCallback onChange)
+void initWs(WsStatusCallback onStatus, WsMessageCallback onMessage)
 {
 	ctrlQueue = xQueueCreate(net::WS_CTRL_QUEUE_LEN, sizeof(ControlMsg));
 	if (ctrlQueue == NULL)
@@ -129,7 +150,8 @@ void initWs(WsStatusCallback onChange)
 		Serial.println("[WS] Khong tao duoc Queue");
 		return;
 	}
-	statusCallback = onChange;
+	statusCallback = onStatus;
+	messageCallback = onMessage;
 	xTaskCreatePinnedToCore(wsTask, task::NETWORK.name, task::NETWORK.stack,
 							NULL, task::NETWORK.prio, NULL, task::NETWORK.core);
 }

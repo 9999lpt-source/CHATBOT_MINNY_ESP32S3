@@ -10,8 +10,9 @@ enum class WsStatus
 };
 
 typedef void (*WsStatusCallback)(WsStatus status);
+typedef void (*WsMessageCallback)(const ServerMessage &msg);
 
-void initWs(WsStatusCallback onChange);
+void initWs(WsStatusCallback onStatus, WsMessageCallback onMessage);
 void wsStart(); // muốn kết nói (chỉ gắn cờ)
 void wsStop();	// muốn ngắt (chỉ gắn cờ)
 
