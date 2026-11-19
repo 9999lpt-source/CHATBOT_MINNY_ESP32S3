@@ -82,7 +82,7 @@ static bool parseState(const char *s, ServerState &out)
 	if (strcmp(s, "transcribing") == 0)
 		out = ServerState::Transcribing;
 	else if (strcmp(s, "thinking") == 0)
-		out = ServerState::Thingking;
+		out = ServerState::Thinking;
 	else
 		return false;
 	return true;

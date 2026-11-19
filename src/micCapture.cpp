@@ -74,7 +74,7 @@ static void micTask(void *pvParameters)
         size_t n = byteRead / sizeof(int32_t);
         for (size_t i =  0; i < n; i++)
         {
-            int32_t x = raw[i] >> audio::MIC_SHIIFT;
+            int32_t x = raw[i] >> audio::MIC_SHIFT;
             dcAcc += x - (dcAcc >> 8);
             int32_t y = x - (dcAcc >> 8); // bỏ mức nền trước khi cắt về 16-bit
             
@@ -96,7 +96,7 @@ static void micTask(void *pvParameters)
             frameCallBack(pcm, n);
 
         frames++;
-        if (frames >= audio::LEVEL_FREAME)
+        if (frames >= audio::LEVEL_FRAMES)
         {
             levelRms = (uint16_t)sqrtf((float)(sumSq / (int64_t)count));
             levelPeak = (uint16_t)peak;

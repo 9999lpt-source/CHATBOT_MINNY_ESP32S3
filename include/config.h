@@ -90,9 +90,9 @@ namespace audio {
 	constexpr uint32_t FRAME_SAMPLES = 320; // 20ms
 	constexpr int MIC_DMA_COUNT = 4; // số khối DMA
 	constexpr bool MIC_USE_LEFT = true; // dùng kênh trái của INMP441
-	constexpr int MIC_SHIIFT = 15;
-	constexpr uint32_t MIC_READ_TIMEOUT_MS = 1000; // thời gian chờ mic ổn định
-	constexpr uint8_t LEVEL_FREAME = 5; // 5 Khung x 20ms = 100ms	
+	constexpr int MIC_SHIFT = 15;
+	constexpr uint32_t MIC_READ_TIMEOUT_MS = 100; // thời gian chờ mic ổn định
+	constexpr uint8_t LEVEL_FRAMES = 5; // 5 Khung x 20ms = 100ms	
 }
 
 #endif // CONFIG_

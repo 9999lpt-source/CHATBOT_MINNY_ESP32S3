@@ -31,7 +31,7 @@ enum class ServerState: uint8_t
 {
 	None,
 	Transcribing,
-	Thingking
+	Thinking
 };
 
 // ===== CÁC GIÁ TRỊ CỦA ERROR =====

@@ -108,7 +108,7 @@ static void onWsMessage(const ServerMessage &m)
 	case ServerMsg::State:
 		if (m.state == ServerState::Transcribing)
 			oledSetText("Đang nhận dạng giọng nói...");
-		else if (m.state == ServerState::Thingking)
+		else if (m.state == ServerState::Thinking)
 			oledSetText("Đang suy nghĩ...");
 		break;
 	case ServerMsg::Error:
