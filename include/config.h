@@ -50,7 +50,7 @@ namespace net
 
 	// ----- WEBSOCKET -----
 	constexpr bool USE_LOCAL_SERVER = true;
-	constexpr const char *WS_HOST = USE_LOCAL_SERVER ? "10.41.136.67" : "chatbot-minny.onrender.com";
+	constexpr const char *WS_HOST = USE_LOCAL_SERVER ? "192.168.1.139" : "chatbot-minny.onrender.com";
 	constexpr uint16_t WS_PORT = USE_LOCAL_SERVER ? 8000 : 443;
 	constexpr bool WS_USE_SSL = !USE_LOCAL_SERVER;
 	constexpr const char *WS_PATH = "/ws/minny";
@@ -80,7 +80,7 @@ namespace task
 	constexpr Cfg BUTTON = {"Button_Task", 2048, 2, 1};
 	constexpr Cfg WIFI = {"Wifi_Task", 6144, 2, 0};
 	constexpr Cfg NETWORK = {"Network_Task", 8192, 3, 0};
-	constexpr Cfg MIC = {"Mic_Task", 4096, 5, 1};
+	constexpr Cfg MIC = {"Mic_Task", 6144, 5, 1};
 
 } // namespace task
 
@@ -95,4 +95,4 @@ namespace audio {
 	constexpr uint8_t LEVEL_FREAME = 5; // 5 Khung x 20ms = 100ms	
 }
 
-#endif // CONFIG_H
+#endif // CONFIG_

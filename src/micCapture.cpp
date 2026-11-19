@@ -9,6 +9,7 @@ static const i2s_port_t MIC_PORT = I2S_NUM_1;
 
 static volatile uint16_t levelRms = 0;
 static volatile uint16_t levelPeak = 0;
+static MicFrameCallback frameCallBack = NULL;
 
 //===== CẤU HÌNH I2S =====
 static bool installI2s()
@@ -51,7 +52,8 @@ static bool installI2s()
 static void micTask(void *pvParameters)
 {
     int32_t raw[audio::FRAME_SAMPLES];
-    int32_t dcAcc = 0;
+    int16_t pcm[audio::FRAME_SAMPLES];
+    int32_t dcAcc = 0;  
     int64_t sumSq = 0;
     uint32_t count = 0;
     int32_t peak = 0;
@@ -75,10 +77,13 @@ static void micTask(void *pvParameters)
             int32_t x = raw[i] >> audio::MIC_SHIIFT;
             dcAcc += x - (dcAcc >> 8);
             int32_t y = x - (dcAcc >> 8); // bỏ mức nền trước khi cắt về 16-bit
+            
             if (y > 32767)
                 y = 32767;
             else if (y < -32768)
                 y = -32768;
+
+            pcm[i] = (int16_t)y;
 
             int32_t a = (y < 0) ? -y : y;
             if (a > peak) 
@@ -86,6 +91,9 @@ static void micTask(void *pvParameters)
             sumSq += (int64_t)y * y;
             count++;
         }
+
+        if (frameCallBack != NULL)
+            frameCallBack(pcm, n);
 
         frames++;
         if (frames >= audio::LEVEL_FREAME)
@@ -100,8 +108,9 @@ static void micTask(void *pvParameters)
     }
 }
 
-void initMic()
+void initMic(MicFrameCallback onFrame)
 {
+    frameCallBack = onFrame;
     if (!installI2s())
     {
         Serial.println("[MIC] Cai I2S that bai");

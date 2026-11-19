@@ -5,7 +5,9 @@
 #include "wsClient.h"
 #include "protocol.h"
 #include "micCapture.h"
+#include "config.h"
 #include <WiFi.h>
+#include <stddef.h>
 
 int pressCount = 0;
 
@@ -116,6 +118,22 @@ static void onWsMessage(const ServerMessage &m)
 	}
 }
 
+// ===== THỬ TẠM 4b-2a =====
+static volatile uint32_t micFrames = 0;
+static volatile uint32_t micSamples = 0;
+static volatile uint32_t micShort = 0;
+static volatile uint32_t micStackLeft = 0;
+
+static void onMicFrame(const int16_t *samples, size_t count)
+{
+    (void)samples;
+    micFrames++;
+    micSamples += count;
+    if (count != audio::FRAME_SAMPLES)
+        micShort++;
+    micStackLeft = uxTaskGetStackHighWaterMark(NULL);
+}
+
 // ===== HÀM SETUP =====
 void setup()
 {
@@ -125,11 +143,24 @@ void setup()
 	initButton(onButtonPress);
 	initWs(onWsStatus, onWsMessage);
 	initWifi(onWifiStatus);
-	initMic();
+	initMic(onMicFrame);
 }
 
 // ===== HÀM LOOP =====
 void loop()
 {
-	vTaskDelay(pdMS_TO_TICKS(1000));
+	static uint32_t lastPrint = 0;
+    static uint32_t lastFrames = 0;
+    static uint32_t lastSamples = 0;
+    if (millis() - lastPrint >= 1000)
+    {
+        lastPrint = millis();
+        uint32_t f = micFrames;
+        uint32_t s = micSamples;
+        Serial.printf("[TEST] khung/giay=%u mau/giay=%u khung_ngan=%u stack_con=%u\n",
+                      (unsigned)(f - lastFrames), (unsigned)(s - lastSamples),
+                      (unsigned)micShort, (unsigned)micStackLeft);
+        lastFrames = f;
+        lastSamples = s;
+    }
 }
