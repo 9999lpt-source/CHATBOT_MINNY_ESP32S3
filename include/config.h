@@ -2,6 +2,7 @@
 #define CONFIG_H
 
 #include <stdint.h>
+#include <stddef.h>
 
 // ===== CHÂN (GPIO) =====
 namespace pin
@@ -93,6 +94,10 @@ namespace audio {
 	constexpr int MIC_SHIFT = 15;
 	constexpr uint32_t MIC_READ_TIMEOUT_MS = 100; // thời gian chờ mic ổn định
 	constexpr uint8_t LEVEL_FRAMES = 5; // 5 Khung x 20ms = 100ms	
+
+	constexpr size_t STREAM_CAPACITY_BYTES = 160 * 1024;				// dung lượng PCM mục hiêu
+	constexpr size_t STREAM_STORAGE_BYTES = STREAM_CAPACITY_BYTES + 1;	// Vùng nhớ cấp phát
+	constexpr size_t STREAM_TRIGGER_BYTES = 1;							// Ngưỡng đánh thức task chờ đọc
 }
 
-#endif // CONFIG_
+#endif // CONFIG_H

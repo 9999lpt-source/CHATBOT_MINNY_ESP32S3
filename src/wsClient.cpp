@@ -2,6 +2,8 @@
 #include "config.h"
 #include "protocol.h"
 #include <Arduino.h>
+#include "freertos/stream_buffer.h"
+#include "esp_heap_caps.h"
 #include <WebSocketsClient.h>
 
 // ===== DỮ LIỆU NỘI BỘ =====
@@ -11,6 +13,12 @@ static WsMessageCallback messageCallback = NULL;
 static volatile bool wantConnected = false;
 static bool began = false;
 static volatile bool connected = false;
+
+//===== BỘ NHỚ ĐỆM ÂM THANH =====
+static uint8_t* audioStorage = nullptr; 			// Con trỏ đến vùng chứa PCM trong PSRAM
+static StaticStreamBuffer_t audioStruct;			// Cau truc quan ly
+static StreamBufferHandle_t audioStream = nullptr;	// Handle các Streambuffer sử dụng.
+
 
 //===== CẤU TRÚC CLIENT MESSAGE =====
 struct ControlMsg
@@ -144,12 +152,42 @@ static void wsTask(void *pvParameters)
 // ===== CẤU HÌNH WEBSOCKET =====
 void initWs(WsStatusCallback onStatus, WsMessageCallback onMessage)
 {
-	ctrlQueue = xQueueCreate(net::WS_CTRL_QUEUE_LEN, sizeof(ControlMsg));
-	if (ctrlQueue == NULL)
+
+	// CẤP PHÁT BỘ NHỚ CHỨ PCM TRONG PSRAM
+	audioStorage = static_cast<uint8_t*>(heap_caps_malloc(audio::STREAM_STORAGE_BYTES,MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+	if (audioStorage != nullptr) Serial.println("[WS] PSRAM OK");
+	else
 	{
-		Serial.println("[WS] Khong tao duoc Queue");
+		Serial.println("[WS] PSRAM FAIL");
 		return;
 	}
+
+	// TẠO STREAMBUFFER
+	audioStream = xStreamBufferCreateStatic
+	(
+		audio::STREAM_STORAGE_BYTES,
+		audio::STREAM_TRIGGER_BYTES,
+		audioStorage, &audioStruct
+	);
+	if (audioStream != nullptr) Serial.println("[WS] STREAMBUFFER OK");
+	else
+	{
+		Serial.println("[WS] StreamBuffer FAIL");
+		heap_caps_free(audioStorage);
+		audioStorage = nullptr;
+		return;
+	}
+
+	// TẠO HÀNG ĐỢI
+	ctrlQueue = xQueueCreate(net::WS_CTRL_QUEUE_LEN, sizeof(ControlMsg));
+	if (ctrlQueue != NULL) Serial.println("[WS] STREAMBUFFER OK");
+	else
+	{
+		Serial.println("[WS] Queue FAIL");
+		return;
+	}
+
+	// TẠO Ws_Task
 	statusCallback = onStatus;
 	messageCallback = onMessage;
 	xTaskCreatePinnedToCore(wsTask, task::NETWORK.name, task::NETWORK.stack,
