@@ -34,8 +34,8 @@ size_t buildClientMsg(char *out, size_t outSize, ClientMsg type, int32_t turn)
 
 	// Kiểm tra turn
 	bool hasTurn = (turn >= 0);
-	if (!hasTurn && name != "cancel")
-		return 0;
+	if (!hasTurn && type != ClientMsg::Cancel)
+    	return 0;
 
 	// Tạo tin
 	int n;
