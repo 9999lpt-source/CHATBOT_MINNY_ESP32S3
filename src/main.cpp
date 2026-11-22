@@ -15,6 +15,17 @@ int pressCount = 0;
 static volatile int32_t turnCounter = 0;
 static volatile int32_t requestedMicTurn = NO_TURN; //<-----
 
+static volatile uint32_t micStartMs = 0;
+static volatile uint32_t micEndMs = 0;
+
+static volatile uint8_t micPushError = 0;
+
+// 0: Thanh cong
+// 1: Khung mic sai kich thuoc
+// 2: wsPushAudio that bai
+// 3: Khong gui duoc AudioEnd
+static volatile uint8_t micResultReason = 0;
+
 // ===== HÀM GỌI KHI NHẤN NÚT =====
 static void onButtonPress()
 {
@@ -144,8 +155,14 @@ static void onMicFrame(const int16_t *samples, size_t count)
     // Co luot moi thay the luot cu
     if (requested != activeTurn)
     {
+        micStartMs = 0;
+        micEndMs = 0;
+        micResultReason = 0;
+
         activeTurn = NO_TURN;
         framesSent = 0;
+
+        micPushError = 0;
 
         // Network_Task chua mo luot moi
         if (!wsAudioReady(requested))
@@ -162,6 +179,8 @@ static void onMicFrame(const int16_t *samples, size_t count)
 
         micResultFrames = framesSent;
         micResultOk = false;
+
+        micResultReason = 1; micEndMs = millis();
         micResultTurn = activeTurn;
 
         completedTurn = activeTurn;
@@ -169,11 +188,17 @@ static void onMicFrame(const int16_t *samples, size_t count)
         return;
     }
 
+    if (framesSent == 0)
+        micStartMs = millis();
+
+    WsPushError pushError = WsPushError::None;
+
     // Ghi nguyen khung PCM vao StreamBuffer
     bool ok = wsPushAudio(
         reinterpret_cast<const uint8_t*>(samples),
         count * sizeof(int16_t),
-        activeTurn
+        activeTurn,
+        &pushError
     );
 
     if (!ok)
@@ -182,10 +207,13 @@ static void onMicFrame(const int16_t *samples, size_t count)
 
         micResultFrames = framesSent;
         micResultOk = false;
+        micResultReason = 2; micEndMs = millis();
         micResultTurn = activeTurn;
 
         completedTurn = activeTurn;
         activeTurn = NO_TURN;
+
+        micPushError = static_cast<uint8_t>(pushError);
         return;
     }
 
@@ -203,7 +231,12 @@ static void onMicFrame(const int16_t *samples, size_t count)
     );
 
     if (!ended)
+    {
+        micResultReason = 3; micEndMs = millis();
         wsFlagAudioFailure(activeTurn);
+    } else {
+        micResultReason = 0; micEndMs = millis();
+    }
 
     micResultFrames = framesSent;
     micResultOk = ended;
@@ -236,16 +269,24 @@ void loop()
     {
         lastReportedTurn = result;
 
+        uint32_t start = micStartMs;
+        uint32_t end = micEndMs;
+        uint8_t reason = micResultReason;
+        uint32_t frames = micResultFrames;
+        bool ok = micResultOk;
+
+        uint8_t pushError = micPushError;
+
         Serial.printf(
-            "[TEST] MIC turn=%ld frames=%lu bytes=%lu ok=%d\n",
+            "[%lu] [TEST] MIC turn=%ld frames=%lu "
+            "elapsed=%lu ms ok=%d reason=%u pushError=%u\n",
+            (unsigned long)millis(),
             (long)result,
-            (unsigned long)micResultFrames,
-            (unsigned long)(
-                micResultFrames *
-                audio::FRAME_SAMPLES *
-                sizeof(int16_t)
-            ),
-            micResultOk ? 1 : 0
+            (unsigned long)frames,
+            (unsigned long)(end - start),
+            ok ? 1 : 0,
+            (unsigned)reason,
+            (unsigned)pushError
         );
     }
 

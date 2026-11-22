@@ -72,19 +72,29 @@ bool wsAudioReady(int32_t turn)
 }
 
 // ===== NHẬN PCM =====
-bool wsPushAudio(const uint8_t *data, size_t len, int32_t turn)
+bool wsPushAudio(const uint8_t *data, size_t len, int32_t turn,  WsPushError* error)
 {
+	if (error != nullptr)
+		*error =  WsPushError::None;
+	
+	auto fail = [&](WsPushError reason) -> bool
+	{
+		if (error != nullptr)
+			*error = reason;
+		return false;
+	};
+
 	// 1. Kiểm tra đầu vào
 	if (data == nullptr || len == 0 || (len % 2) != 0)
-		return false;
+		return fail(WsPushError::BadInput);
 	if (audioMutex == nullptr || audioStream == nullptr)
-		return false;
+		return fail(WsPushError::NotInitialized);
 	
 	// 2. chiếm quyền truy cập không chờ đợi (audioMutex, 0)
-	if (xSemaphoreTake(audioMutex, 0) != pdTRUE)
+	if (xSemaphoreTake(audioMutex, pdMS_TO_TICKS(audio::MIC_MUTEX_WAIT_MS)) != pdTRUE)
 	{
 		markAudioFailure(turn);
-		return false;
+		return fail(WsPushError::MutexBusy);
 	}
 
 	// 3. Đảm bảo kết nối, đúng phiên, đúng lượt
@@ -95,7 +105,7 @@ bool wsPushAudio(const uint8_t *data, size_t len, int32_t turn)
 	if (!valid)
 	{
 		xSemaphoreGive(audioMutex);
-		return false;
+		return fail(WsPushError::InvalidState);
 	}
 
 	// 4. Chống chàn & ghi nguyên khung
@@ -103,17 +113,21 @@ bool wsPushAudio(const uint8_t *data, size_t len, int32_t turn)
 	{
 		markAudioFailure(turn);
 		xSemaphoreGive(audioMutex);
-		return false;
+		return fail(WsPushError::BufferFull);
 	}
 
 	// ghi vào bộ đệm
 	size_t written = xStreamBufferSend(audioStream, data, len, 0);
 
 	if (written != len)
+	{
 		markAudioFailure(turn);
+		xSemaphoreGive(audioMutex);
+		return fail(WsPushError::PartialWrite);
+	}
 
 	xSemaphoreGive(audioMutex);
-	return written == len;
+	return true;
 }
 
 void wsFlagAudioFailure(int32_t turn)
@@ -489,7 +503,13 @@ void initWs(WsStatusCallback onStatus, WsMessageCallback onMessage)
 
 	// CHUẨN BỊ MUTEX
 	audioMutex = xSemaphoreCreateMutex();
-	if (audioMutex != nullptr) Serial.println("[WS] Audio mutex OK");
+	if (audioMutex != nullptr) {
+		Serial.printf("[WS] Tick=%lu ms, MIC mutex wait=%lu ticks\n",
+    				(unsigned long)portTICK_PERIOD_MS,
+    				(unsigned long)pdMS_TO_TICKS(
+        			audio::MIC_MUTEX_WAIT_MS)
+		);
+	}
 	else if (audioMutex == nullptr)
 	{
 		Serial.println("[WS] Audio mutex FAIL");

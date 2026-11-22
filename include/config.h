@@ -51,7 +51,7 @@ namespace net
 
 	// ----- WEBSOCKET -----
 	constexpr bool USE_LOCAL_SERVER = true;
-	constexpr const char *WS_HOST = USE_LOCAL_SERVER ? "192.168.1.2207" : "chatbot-minny.onrender.com";
+	constexpr const char *WS_HOST = USE_LOCAL_SERVER ? "192.168.1.227" : "chatbot-minny.onrender.com";
 	constexpr uint16_t WS_PORT = USE_LOCAL_SERVER ? 8000 : 443;
 	constexpr bool WS_USE_SSL = !USE_LOCAL_SERVER;
 	constexpr const char *WS_PATH = "/ws/minny";
@@ -100,12 +100,14 @@ namespace audio {
 	constexpr size_t STREAM_TRIGGER_BYTES = 1;							// Ngưỡng đánh thức task chờ đọc
 
 	constexpr size_t WS_AUDIO_CHUNK_BYTES = FRAME_SAMPLES * sizeof(int16_t); // 640 byte
+	constexpr uint32_t MIC_MUTEX_WAIT_MS = 2;
 
 	constexpr uint32_t TEST_TONE_MS = 2000;
 	constexpr uint32_t TEST_TONE_HZ = 1000;
 
 	constexpr uint32_t MIC_TEST_MS = 5000;
-	constexpr uint32_t MIC_TEST_FRAMES = MIC_TEST_MS * SAMPLE_RATE / (FRAME_SAMPLES * 100);
+	constexpr uint32_t MIC_TEST_FRAMES = MIC_TEST_MS * SAMPLE_RATE / (FRAME_SAMPLES * 1000);
+	static_assert(MIC_TEST_FRAMES == 250, "MIC_TEST_FRAMES phai bang 250");
 }
 
 #endif // CONFIG_H
