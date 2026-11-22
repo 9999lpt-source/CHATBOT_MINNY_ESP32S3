@@ -142,6 +142,9 @@ static void onMicFrame(const int16_t *samples, size_t count)
     static int32_t completedTurn = NO_TURN;
     static uint32_t framesSent = 0;
 
+    static int32_t guardTurn = NO_TURN; // đánh dấu turn cần lọc âm thanh 
+    static uint32_t guardStartedMs = 0; // ghi lần đầu thấy yêu cầu mới
+
     int32_t requested = requestedMicTurn;
 
     // Chua co yeu cau thu
@@ -152,28 +155,36 @@ static void onMicFrame(const int16_t *samples, size_t count)
     if (requested == completedTurn)
         return;
 
-    // Co luot moi thay the luot cu
-    if (requested != activeTurn)
+    // === PHÁT HIỆN YÊU CẦU LƯỢT MỚI ===
+    if (requested != guardTurn)
     {
-        micStartMs = 0;
-        micEndMs = 0;
-        micResultReason = 0;
+        guardTurn = requested;
+        guardStartedMs = millis();
 
+        // Dừng lượt cũ khi có lượt mới
         activeTurn = NO_TURN;
         framesSent = 0;
 
+        micStartMs = 0;
+        micEndMs = 0;
+        micResultReason = 0;
         micPushError = 0;
+    }
 
-        // Network_Task chua mo luot moi
+    // === KHOẢNG BẢO VỆ TIẾNG NÚT ===
+    if ((uint32_t)(millis() - guardStartedMs) < audio::BUTTON_AUDIO_GUARD_MS)
+        return;
+
+    // === ĐỢI NETWORK_TASK MỞ LƯỢT ===
+    if (activeTurn != requested)
+    {
         if (!wsAudioReady(requested))
             return;
-
         activeTurn = requested;
     }
 
     // Trong bai thu nay, moi khung phai du 320 mau
-    if (samples == nullptr ||
-        count != audio::FRAME_SAMPLES)
+    if (samples == nullptr || count != audio::FRAME_SAMPLES)
     {
         wsFlagAudioFailure(activeTurn);
 
@@ -188,8 +199,7 @@ static void onMicFrame(const int16_t *samples, size_t count)
         return;
     }
 
-    if (framesSent == 0)
-        micStartMs = millis();
+    if (framesSent == 0)micStartMs = millis();
 
     WsPushError pushError = WsPushError::None;
 
@@ -258,6 +268,7 @@ void setup()
 	initMic(onMicFrame);
 }
 
+// ===== HÀM LOOP =====
 void loop()
 {
     static int32_t lastReportedTurn = NO_TURN;
@@ -292,119 +303,3 @@ void loop()
 
     delay(10);
 }
-
-// ===== HÀM LOOP =====
-
-/*
-void loop()
-{
-    static int32_t activeTurn = NO_TURN;
-    static int32_t completedTurn = NO_TURN;
-    static uint32_t framesSent = 0;
-    static uint32_t nextFrameMs = 0;
-    static bool started = false;
-
-    constexpr uint32_t FRAME_MS =
-        audio::FRAME_SAMPLES * 1000 / audio::SAMPLE_RATE;
-
-    constexpr uint32_t TOTAL_FRAMES =
-        audio::TEST_TONE_MS / FRAME_MS;
-
-    constexpr uint32_t PERIOD_SAMPLES =
-        audio::SAMPLE_RATE / audio::TEST_TONE_HZ;
-
-    static_assert(PERIOD_SAMPLES == 16,
-                  "Bang song sin can 16 mau moi chu ky");
-
-    static const int16_t tone[16] = {
-        0, 2296, 4243, 5543,
-        6000, 5543, 4243, 2296,
-        0, -2296, -4243, -5543,
-        -6000, -5543, -4243, -2296
-    };
-
-    static int16_t pcm[audio::FRAME_SAMPLES];
-
-    int32_t requested = requestedTestTurn;
-
-    if (requested == NO_TURN || requested == completedTurn)
-        return;
-
-    // Có yêu cầu lượt mới
-    if (requested != activeTurn)
-    {
-        activeTurn = requested;
-        framesSent = 0;
-        started = false;
-    }
-
-    // Đợi Network_Task mở lượt
-    if (!started)
-    {
-        if (!wsAudioReady(activeTurn))
-            return;
-
-        started = true;
-        nextFrameMs = millis();
-
-        Serial.printf(
-            "[TEST] Bat dau tao PCM luot %ld\n",
-            (long)activeTurn
-        );
-    }
-
-    // Phát một khung mỗi 20 ms
-    if ((int32_t)(millis() - nextFrameMs) < 0)
-        return;
-
-    for (size_t i = 0; i < audio::FRAME_SAMPLES; i++)
-    {
-        pcm[i] = tone[i % PERIOD_SAMPLES];
-    }
-
-    bool ok = wsPushAudio(
-        reinterpret_cast<const uint8_t*>(pcm),
-        sizeof(pcm),
-        activeTurn
-    );
-
-    if (!ok)
-    {
-        Serial.printf(
-            "[TEST] Push PCM FAIL luot %ld\n",
-            (long)activeTurn
-        );
-
-        wsFlagAudioFailure(activeTurn);
-        completedTurn = activeTurn;
-        activeTurn = NO_TURN;
-        return;
-    }
-
-    framesSent++;
-    nextFrameMs += FRAME_MS;
-
-    if (framesSent == TOTAL_FRAMES)
-    {
-        bool ended = wsSendControl(
-            ClientMsg::AudioEnd,
-            activeTurn
-        );
-
-        if (!ended)
-            wsFlagAudioFailure(activeTurn);
-
-        Serial.printf(
-            "[TEST] Luot %ld: %lu frames, %lu bytes, end=%d\n",
-            (long)activeTurn,
-            (unsigned long)framesSent,
-            (unsigned long)(framesSent * sizeof(pcm)),
-            ended ? 1 : 0
-        );
-
-        completedTurn = activeTurn;
-        activeTurn = NO_TURN;
-    }
-
-}
-*/
