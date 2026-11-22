@@ -13,7 +13,7 @@ int pressCount = 0;
 
 // ===== BỘ ĐẾM LƯỢT =====
 static volatile int32_t turnCounter = 0;
-static volatile int32_t requestedTestTurn = NO_TURN; //<-----
+static volatile int32_t requestedMicTurn = NO_TURN; //<-----
 
 // ===== HÀM GỌI KHI NHẤN NÚT =====
 static void onButtonPress()
@@ -21,8 +21,10 @@ static void onButtonPress()
 	int32_t turn = turnCounter + 1;
 	turnCounter = turn;
 
-	if (wsSendControl(ClientMsg::AudioStart, turn))
-		requestedTestTurn = turn;
+	if (!wsSendControl(ClientMsg::AudioStart, turn))
+		return;
+        
+    requestedMicTurn = turn;
 }
 
 // ===== HÀM GỌI KHI THAY ĐỔI TRẠNG THÁI WIFI =====
@@ -116,20 +118,99 @@ static void onWsMessage(const ServerMessage &m)
 	}
 }
 
-// ===== THỬ TẠM 4b-2a =====
-static volatile uint32_t micFrames = 0;
-static volatile uint32_t micSamples = 0;
-static volatile uint32_t micShort = 0;
-static volatile uint32_t micStackLeft = 0;
+// ===== THỬ TẠM 4b-2c =====
+// ===== KET QUA THU MICRO =====
+static volatile int32_t micResultTurn = NO_TURN;
+static volatile uint32_t micResultFrames = 0;
+static volatile bool micResultOk = false;
 
+// ===== CALLBACK CHAY TRONG MIC_TASK =====
 static void onMicFrame(const int16_t *samples, size_t count)
 {
-    (void)samples;
-    micFrames++;
-    micSamples += count;
-    if (count != audio::FRAME_SAMPLES)
-        micShort++;
-    micStackLeft = uxTaskGetStackHighWaterMark(NULL);
+    static int32_t activeTurn = NO_TURN;
+    static int32_t completedTurn = NO_TURN;
+    static uint32_t framesSent = 0;
+
+    int32_t requested = requestedMicTurn;
+
+    // Chua co yeu cau thu
+    if (requested == NO_TURN)
+        return;
+
+    // Luot nay da hoan tat
+    if (requested == completedTurn)
+        return;
+
+    // Co luot moi thay the luot cu
+    if (requested != activeTurn)
+    {
+        activeTurn = NO_TURN;
+        framesSent = 0;
+
+        // Network_Task chua mo luot moi
+        if (!wsAudioReady(requested))
+            return;
+
+        activeTurn = requested;
+    }
+
+    // Trong bai thu nay, moi khung phai du 320 mau
+    if (samples == nullptr ||
+        count != audio::FRAME_SAMPLES)
+    {
+        wsFlagAudioFailure(activeTurn);
+
+        micResultFrames = framesSent;
+        micResultOk = false;
+        micResultTurn = activeTurn;
+
+        completedTurn = activeTurn;
+        activeTurn = NO_TURN;
+        return;
+    }
+
+    // Ghi nguyen khung PCM vao StreamBuffer
+    bool ok = wsPushAudio(
+        reinterpret_cast<const uint8_t*>(samples),
+        count * sizeof(int16_t),
+        activeTurn
+    );
+
+    if (!ok)
+    {
+        wsFlagAudioFailure(activeTurn);
+
+        micResultFrames = framesSent;
+        micResultOk = false;
+        micResultTurn = activeTurn;
+
+        completedTurn = activeTurn;
+        activeTurn = NO_TURN;
+        return;
+    }
+
+    framesSent++;
+
+    // Chua du 5 giay, tiep tuc thu
+    if (framesSent < audio::MIC_TEST_FRAMES)
+        return;
+
+    // Khung thu 250 da ghi thanh cong.
+    // Yeu cau ket thuc ngay trong Mic_Task.
+    bool ended = wsSendControl(
+        ClientMsg::AudioEnd,
+        activeTurn
+    );
+
+    if (!ended)
+        wsFlagAudioFailure(activeTurn);
+
+    micResultFrames = framesSent;
+    micResultOk = ended;
+    micResultTurn = activeTurn;
+
+    completedTurn = activeTurn;
+    activeTurn = NO_TURN;
 }
 
 // ===== HÀM SETUP =====
@@ -144,7 +225,36 @@ void setup()
 	initMic(onMicFrame);
 }
 
+void loop()
+{
+    static int32_t lastReportedTurn = NO_TURN;
+
+    int32_t result = micResultTurn;
+
+    if (result != NO_TURN &&
+        result != lastReportedTurn)
+    {
+        lastReportedTurn = result;
+
+        Serial.printf(
+            "[TEST] MIC turn=%ld frames=%lu bytes=%lu ok=%d\n",
+            (long)result,
+            (unsigned long)micResultFrames,
+            (unsigned long)(
+                micResultFrames *
+                audio::FRAME_SAMPLES *
+                sizeof(int16_t)
+            ),
+            micResultOk ? 1 : 0
+        );
+    }
+
+    delay(10);
+}
+
 // ===== HÀM LOOP =====
+
+/*
 void loop()
 {
     static int32_t activeTurn = NO_TURN;
@@ -254,4 +364,6 @@ void loop()
         completedTurn = activeTurn;
         activeTurn = NO_TURN;
     }
+
 }
+*/

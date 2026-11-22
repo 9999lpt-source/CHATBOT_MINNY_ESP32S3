@@ -43,6 +43,17 @@ struct ControlMsg
 };
 static QueueHandle_t ctrlQueue = NULL;
 
+// ===== HÀM CHỐNG LỖI LƯỢT CŨ ĐÈ LỖI LƯỢT MỚI =====
+static void markAudioFailure(int32_t turn)
+{
+	if (turn < 0) return;
+
+	int32_t previous = failedAudioTurn.load();
+
+	while(previous < turn)
+		if (failedAudioTurn.compare_exchange_weak(previous, turn)) break;
+}
+
 // ===== SẴN SÀNG NHẬN PCM TỪ BÊN NGOÀI =====
 bool wsAudioReady(int32_t turn)
 {
@@ -72,7 +83,7 @@ bool wsPushAudio(const uint8_t *data, size_t len, int32_t turn)
 	// 2. chiếm quyền truy cập không chờ đợi (audioMutex, 0)
 	if (xSemaphoreTake(audioMutex, 0) != pdTRUE)
 	{
-		failedAudioTurn.store(turn);
+		markAudioFailure(turn);
 		return false;
 	}
 
@@ -90,7 +101,7 @@ bool wsPushAudio(const uint8_t *data, size_t len, int32_t turn)
 	// 4. Chống chàn & ghi nguyên khung
 	if (xStreamBufferSpacesAvailable(audioStream) < len) //kiểm tra chỗ trống
 	{
-		failedAudioTurn.store(turn);
+		markAudioFailure(turn);
 		xSemaphoreGive(audioMutex);
 		return false;
 	}
@@ -99,7 +110,7 @@ bool wsPushAudio(const uint8_t *data, size_t len, int32_t turn)
 	size_t written = xStreamBufferSend(audioStream, data, len, 0);
 
 	if (written != len)
-		failedAudioTurn.store(turn);
+		markAudioFailure(turn);
 
 	xSemaphoreGive(audioMutex);
 	return written == len;
@@ -107,7 +118,7 @@ bool wsPushAudio(const uint8_t *data, size_t len, int32_t turn)
 
 void wsFlagAudioFailure(int32_t turn)
 {
-	if (turn >= 0) failedAudioTurn.store(turn);
+	markAudioFailure(turn);
 }
 
 // ===== RESET BỘ ĐỆM, TRẠNG THÁI =====
@@ -335,21 +346,24 @@ static void wsTaskPumpAudio(uint8_t *chunk, size_t chunkSize)
 	if (!began && !connected)
 		return;
 
-	if (broken) // 1. Lượt hiện tại bị đánh dấu lỗi PCM
+	// 1. Lượt hiện tại bị đánh dấu lỗi PCM
+	if (broken)
 	{
 		Serial.printf("[WS] huy luot loi PCM: %ld\n", (long)turn);
 		if (!resetLocalAudio() || !sendControlNow(ClientMsg::Cancel, turn))
 			dropTransport();
 	}
 
-	else if (n > 0) // 2. Lượt bình thường (n byte PCM đọc từ PSRAM)
+	// 2. Lượt bình thường (n byte PCM đọc từ PSRAM)
+	else if (n > 0)
 	{
 		// Không giữ mutex khi gửi mạng
 		if (!ws.sendBIN(chunk, n))
 			dropTransport();
 	}
 
-	else if (endReady) // 3. Gửi PCM xong
+	 // 3. Gửi PCM xong
+	else if (endReady)
 	{
 		// Kiểm tra lần cuối
 		if (failedAudioTurn.load() == turn)
