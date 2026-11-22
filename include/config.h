@@ -102,14 +102,14 @@ namespace audio {
 	constexpr size_t WS_AUDIO_CHUNK_BYTES = FRAME_SAMPLES * sizeof(int16_t); // 640 byte
 	constexpr uint32_t MIC_MUTEX_WAIT_MS = 2;
 
-	constexpr uint32_t TEST_TONE_MS = 2000;
-	constexpr uint32_t TEST_TONE_HZ = 1000;
-
 	constexpr uint32_t MIC_TEST_MS = 5000;
 	constexpr uint32_t MIC_TEST_FRAMES = MIC_TEST_MS * SAMPLE_RATE / (FRAME_SAMPLES * 1000);
 	static_assert(MIC_TEST_FRAMES == 250, "MIC_TEST_FRAMES phai bang 250");
 
 	constexpr uint32_t BUTTON_AUDIO_GUARD_MS = 200; // Lọc âm thanh nút bấm đầu file wav
+
+	constexpr bool LOG_MIC_SUCCESS = false;
+	constexpr bool LOG_MIC_ERROR = true;
 }
 
 #endif // CONFIG_H

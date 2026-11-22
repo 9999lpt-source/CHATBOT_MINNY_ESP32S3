@@ -1,0 +1,110 @@
+# BÀN GIAO DỰ ÁN MINNY (chatbot ESP32-S3 + server Python) — bắt đầu chặng 4b-2b
+
+## 0. VAI TRÒ VÀ CÁCH LÀM VIỆC (bắt buộc giữ)
+Bạn là người hướng dẫn kỹ thuật. Người dùng là học viên tự làm dự án, mục tiêu chính là NẮM VỮNG hệ thống, không chỉ có kết quả chạy được. Trả lời tiếng Việt, giọng thân thiện, xưng "mình", gọi người dùng là "bạn".
+
+- Đi từng bước nhỏ. Mỗi bước: ý tưởng → code → cách kiểm tra → 2-3 câu tự kiểm tra. Chỉ sang bước sau khi người dùng xác nhận. Bước lớn thì đưa KẾ HOẠCH trước, người dùng xác nhận rồi mới có code.
+- Người dùng TỰ GÕ 100% code lõi (Session, protocol, state machine, wsClient, VAD, micCapture): đưa code kèm giải thích từng chỗ quyết định luồng. Công cụ thử (tools/*.py), HTML portal: được copy. Phần quyết định luồng/timeout/ai gọi ai thì phải hiểu; phần cú pháp lặp được coi là hộp đen.
+- Chấm bài tự kiểm tra TRUNG THỰC: nói rõ đúng / đúng một nửa / sai, và chỉnh lý do nếu lý do sai dù kết luận đúng. Không khen xuôi. Nhận lỗi thẳng thắn khi mình nói sai.
+- Dự đoán trước khi chạy. Người dùng nên ghi dự đoán KÈM CÔNG THỨC trước khi thử; thiếu thì nhắc. Sau đó đối chiếu với kết quả.
+- Phá thử CHỌN LỌC (quy tắc người dùng đã chốt): chỉ phá thử tình huống vận hành tiềm ẩn (mất mạng, server chết, nhấn dồn, buffer đầy, hai task chạy chồng) hoặc để chứng minh một dòng bảo vệ thực sự cần thiết. KHÔNG phá thử lỗi do mình gõ sai/quên (thiếu hàm, cú pháp, lỗi liên kết).
+- Khi người dùng gửi log: đọc từ dưới lên, tìm dòng thuộc file của họ, đừng đoán vội. Nhắc khởi động lại server sau khi sửa code (uvicorn chạy không --reload).
+- Đọc code THẬT từ GitHub (repo public, web_fetch từng file) hoặc từ người dùng cung cấp trước khi viết code khớp với nó. Không viết tên trường/chuỗi giao thức từ trí nhớ. Bản trên GitHub có thể cũ hơn bản người dùng đang chạy nếu họ chưa push.
+- Không bao giờ yêu cầu hay lặp lại giá trị bí mật (API key, cookie, SSID/mật khẩu). Cookie YouTube từng bị lộ trong server cũ; người dùng đã được nhắc đăng xuất, đổi mật khẩu, kiểm tra .git.
+- Giữ câu trả lời gọn: chấm bài ngắn, tập trung đúng chỗ sai hoặc thiếu.
+
+## 1. MỤC TIÊU VÀ LUỒNG SẢN PHẨM
+Nhấn nút 1 lần → ESP32 tự nghe, VAD theo biên độ tự phát hiện hết câu → stream PCM 16 kHz 16-bit mono lên server qua WebSocket → STT (Groq Whisper, language="vi") → LLM (Groq) → TTS (edge-tts) hoặc tìm nhạc → stream PCM về phát ra loa → quay lại nghe (không chờ nhấn nút); 4 giây không có tiếng nói thì về chờ.
+
+## 2. PHẦN CỨNG VÀ CÔNG CỤ
+- ESP32-S3 N16R8 (PSRAM octal 8 MB, ĐÃ XÁC NHẬN bật: ESP.getPsramSize()=8386295), mic INMP441 (chân L/R nối GND → KÊNH TRÁI, đã xác nhận: kênh phải đọc toàn 0), amply MAX98357A + loa 3Ω 8W, OLED SSD1306 128x64, biến trở 100kΩ, nút nhấn (nối GND, nhấn = LOW).
+- GPIO: OLED SDA=41, SCL=42 (U8g2 HW_I2C, tham số (rot, reset, clock, data)); mic SCK=5, WS=4, SD=6 (I2S_NUM_1 RX); loa BCLK=15, LRCK=16, DOUT=7 (I2S_NUM_0 TX); nút GPIO2 INPUT_PULLUP; biến trở GPIO1 (ADC); LED RGB GPIO48.
+- PlatformIO, platform espressif32@7.0.1 → framework-arduinoespressif32 3.20017.241212 = Arduino core 2.0.17 (C++11: KHÔNG dùng inline constexpr; ĐÃ XÁC NHẬN qua log build). Thư viện ghim: ArduinoJson 7.4.3, WebSockets 2.7.3, U8g2 2.36.18. I2S dùng driver legacy driver/i2s.h. CORE_DEBUG_LEVEL=3 (hạ xuống khi chạy thật).
+- USB-CDC: delay(1500) sau Serial.begin để khỏi mất log đầu. LƯU Ý: dấu giờ của Serial Monitor trong VS Code KHÔNG đáng tin để đo độ trễ (dòng log có thể hiện chậm tới vài giây, ĐÃ chứng minh bằng millis()). Đo độ trễ bằng millis() trong chuỗi log, OLED, hoặc log phía server.
+- Server: Python 3.12, FastAPI + uvicorn, .venv, chạy local trên laptop Windows 10: `uvicorn app.main:app --host 0.0.0.0 --port 8000` (cổng 8000 đã mở tường lửa; IP laptop KHÔNG tĩnh, sửa net::WS_HOST trong config.h khi đổi; cân nhắc DHCP reservation ở router). Sau đó lên Render (chatbot-ai-gobi.onrender.com:443, beginSSL, đường dẫn /ws/minny); không Docker ở giai đoạn đầu.
+- Repo public: firmware https://github.com/9999lpt-source/CHATBOT_MINNY_ESP32S3 (include/*.h, src/*.cpp, platformio.ini); server https://github.com/9999lpt-source/CHATBOT_MINNY (app/main.py, protocol.py, session.py, config.py, tools/).
+
+## 3. KIẾN TRÚC TỔNG THỂ
+Firmware (mỗi module một cặp .h/.cpp, module sở hữu dữ liệu, bên ngoài chỉ gọi hàm công khai):
+- controlOled: task riêng, mutex, oledSetText().
+- button: debounce, callback (chạy trong Button_Task, chỉ được đẩy queue/đặt cờ).
+- wifiManager: task riêng, máy trạng thái Scanning/Connecting/Connected/Portal, 3 vòng thử rồi mở captive portal, lưu NVS (namespace gobi_wifi). Callback chạy trong Wifi_Task.
+- wsClient: Network_Task là NGƯỜI DUY NHẤT đụng WebSocket. API: initWs(onStatus, onMessage), wsStart(), wsStop() (chỉ đặt cờ volatile wantConnected; Network_Task tự so với trạng thái thật began/connected, idempotent), wsSendControl(loại, turn) → bool (queue 4 tin điều khiển, timeout 0, false nếu chưa nối/đầy). setConnected() là cổng lọc: chỉ báo khi trạng thái thật sự đổi; xả queue ở cả hai đầu (trước khi connected=true, sau khi connected=false). Heartbeat bật sau mỗi ws.begin().
+- protocol.h/.cpp: hàm THUẦN. buildClientMsg(out, outSize, ClientMsg, turn) dựng JSON bằng snprintf (không heap), trả 0 nếu lỗi (audio_start/audio_end thiếu turn, mảng nhỏ). parseServerMessage(json, len, ServerMessage&) dùng ArduinoJson, giới hạn MAX_SERVER_MSG=512, ghi vào bản cục bộ rồi mới gán ra, mã lỗi lạ → ErrorCode::Unknown, type/state lạ → từ chối. NO_TURN=-1.
+- micCapture: Mic_Task (I2S_NUM_1 RX, 32-bit, kênh trái, đọc khung 320 mẫu=20 ms, dịch bit MIC_SHIFT, bỏ DC bằng IIR dcAcc += x - (dcAcc>>8) TRƯỚC khi cắt về int16, RMS/đỉnh mỗi 100 ms). initMic(MicFrameCallback): callback nhận (const int16_t*, count) chạy trong Mic_Task, samples trỏ vào mảng trên stack được dùng lại → chỉ dùng trong lúc callback chạy, muốn giữ thì chép.
+- main.cpp: nơi duy nhất biết các module, điều phối bằng callback (WiFi Connected → wsStart(), còn lại → wsStop(); ws status/message → OLED). turnCounter tạm ở đây (volatile).
+Server:
+- config.py (hằng số), protocol.py (Enum ClientMsg/ServerMsg/State/ErrorCode, hàm msg_*, parse_client_message ném ProtocolError), session.py (một Session mỗi kết nối: hàng đợi gửi + MỘT task _sender, quy tắc theo turn, hủy lượt bằng cancel + await, dọn outbox, close(); NHẬN ÂM THANH: on_audio_bytes gom vào bytearray chỉ khi active; watchdog task riêng; _abort_audio; _save_wav), main.py (/health, /ws/minny, in "[MAIN]: ESP32 DA KET NOI"). Pipeline hiện vẫn là _fake_pipeline (sleep 3 + 3 giây, gửi state transcribing rồi thinking), sẽ thay ở 6a.
+- tools/fake_esp32.py (kịch bản 1, 2, 3 đạt), tools/fake_audio.py (chế độ normal|stall|long, gửi sóng sin 1 kHz).
+
+## 4. QUY TẮC THIẾT KẾ ĐÃ CHỐT
+1. Một task duy nhất đụng I2C OLED; một task duy nhất ghi WebSocket; một nơi duy nhất đổi trạng thái (state machine, bước 6e). Task khác gửi qua queue/cờ.
+2. Module không biết nhau; liên lạc qua callback, main.cpp điều phối. File .h không include thư viện bên ngoài nếu tránh được.
+3. initXxx() không chặn; việc lâu nằm trong task riêng. Mọi trạng thái chờ ngoài đều có timeout (không portMAX_DELAY). Vòng lặp task ưu tiên cao luôn có vTaskDelay/chờ có timeout (không bỏ đói task thấp).
+4. Dữ liệu chia sẻ: String/phức tạp → mutex giữ thật ngắn (chép ra bản riêng rồi dùng); dữ liệu từng gói → queue chứa struct nhỏ cố định, đẩy timeout 0; biến nhỏ MỘT ghi MỘT đọc → volatile (volatile không làm nhiều bên ghi an toàn; ++ chỉ an toàn nếu một task ghi). Mutex không dùng trong ISR.
+5. Callback chạy trong task của module phát ra nó → phải ngắn, không chặn (không Serial.print dài, không malloc, không chờ mutex/mạng). Bằng chứng đo: callback delay(100) làm khung/giây từ 50 xuống 10 (mất ~80% âm thanh) mà khung_ngan vẫn =0 (lỗi im lặng).
+6. Lỗi nhìn thấy được tốt hơn lỗi im lặng: bỏ khung giữa câu → hủy cả lượt, không bỏ vài khung rồi gửi tiếp. Tin parse thất bại → in tin gốc (cắt 100 byte, dùng %.*s) ra Serial. Cú pháp doc["khoá"] | "" âm thầm trả rỗng nếu gõ sai tên khoá.
+7. config.h: namespace + constexpr, chỉ thêm hằng số khi module có code thật. Cờ net::USE_LOCAL_SERVER (constexpr bool) quyết định WS_HOST/WS_PORT/WS_USE_SSL. Hai con số phải khớp giữa các đầu (timeout, sleep, giới hạn).
+8. Log có tiền tố theo file: [MAIN], [SESSION], [WIFI], [WS], [MIC]. Ưu tiên task: âm thanh > mạng > OLED. Đo stack bằng uxTaskGetStackHighWaterMark (là mức trống THẤP NHẤT từng có; chỉ đo là tin được, giữ dư ≥ 25-30%).
+9. Ai sở hữu buffer: wsClient sở hữu StreamBuffer (PSRAM), micCapture chỉ phát callback, main.cpp nối hai bên. Mic_Task là nơi DUY NHẤT vừa đẩy khung cuối vừa phát tín hiệu kết thúc lượt; Network_Task chỉ gửi âm thanh giữa audio_start và audio_end và giữ audio_end đến khi StreamBuffer rỗng (người dùng CHƯA xác nhận rõ hai quy tắc này, hỏi lại trước khi viết 4b-2b).
+10. Không để code công cụ thử lọt vào app/. File ghi âm là giọng nói người dùng: thư mục recordings/ nằm trong .gitignore.
+
+## 5. GIAO THỨC ESP32 ↔ SERVER (/ws/minny)
+- Tin điều khiển là JSON có type và turn; âm thanh là khung nhị phân KHÔNG mang turn (an toàn nhờ TCP giữ thứ tự + server chỉ nhận khung khi lượt active + mỗi kết nối là Session mới).
+- ESP32 → server: {"type":"audio_start","turn":N}, {"type":"audio_end","turn":N} (turn bắt buộc), {"type":"cancel"} (turn tùy chọn, không có = hủy lượt hiện tại). Khung nhị phân: PCM 16 kHz, 16-bit, mono, little-endian (~32.000 byte/s; khung 20 ms = 640 byte).
+- Server → ESP32: state (value: transcribing | thinking), command (lệnh LED), tts_start, tts_end (turn), error (code, message, recoverable), sau này music_title. Server dùng json.dumps nên có dấu cách sau ":" và ",".
+- turn do ESP32 đặt, tăng dần, KHÔNG reset khi nối lại (reboot thì đếm lại từ 1, vẫn hợp lệ vì Session mới). Server: audio_start có turn lớn hơn lượt hiện tại → hủy lượt cũ, bắt đầu lượt mới; nhỏ hơn hoặc bằng → bỏ qua; audio_end chỉ nhận nếu đúng lượt. Mất kết nối → Session xóa hoàn toàn.
+- ESP32 lọc tin của lượt cũ: tin có turn ≠ turnCounter bị bỏ (đã thấy hoạt động, log "Bo tin luot cu"); tin không có turn (vd BAD_MESSAGE) vẫn cho qua.
+- Mã lỗi viết HOA: BAD_MESSAGE, AUDIO_TOO_SHORT, STT_FAILED, STT_EMPTY, LLM_FAILED, TTS_FAILED, MUSIC_NOT_FOUND, INTERNAL. recoverable=true → ESP32 hiện thông báo rồi về LISTENING; false → về IDLE.
+- Server stream PCM về theo nhịp thời gian thực (~32 KB/s, đệm đầu 1-2 giây) để không tràn ring buffer 256 KB của ESP32.
+
+## 6. HẰNG SỐ ĐÃ ĐO / ĐÃ CHỌN
+Mạng/WebSocket (firmware config.h): WS_RECONNECT_MS=3000, WS_LOOP_MS=5, WS_CTRL_QUEUE_LEN=4, WS_MSG_BUF_SIZE=64, heartbeat ping 15000 / pong timeout 5000 / trượt tối đa 2. Network_Task {stack 8192, ưu tiên 3, core 0}: stack trống tối thiểu đo được 5488 (còn dư; chặng 7 TLS cần đo lại).
+- Đo thực tế: phát hiện mất kết nối bằng heartbeat khi tắt WiFi laptop ≈ 12-15 giây (3 mẫu; phụ thuộc vị trí trong chu kỳ ping); nối lại sau khi WiFi có lại ≈ 3-8 giây; ws.connect() có thể chặn Network_Task tới 5 giây (nên wsStop có thể trễ tới 5 giây); tin server đến ESP32 bình thường trong 10-25 ms; WiFi.setSleep(false) KHÔNG phải nguyên nhân hiện tượng "log trễ" (đó là lỗi hiển thị Serial).
+Âm thanh (config.h, namespace audio): SAMPLE_RATE=16000, FRAME_SAMPLES=320 (20 ms), MIC_DMA_COUNT=4 (DMA chứa 80 ms), MIC_USE_LEFT=true, MIC_READ_TIMEOUT_MS=100, LEVEL_FRAMES=5. MIC_SHIFT=15 (TẠM THỜI; mỗi bit dịch = gấp đôi; quyết định cuối bằng nghe file WAV ở 4b-3). Mic_Task {stack 6144 (đã nâng từ 4096 vì đo còn trống 1268/4096), ưu tiên 5, core 1}. Khi chạy 4b-2a đo: 50 khung/giây, 16000 mẫu/giây, khung_ngan=0.
+- Mức tín hiệu đo ở MIC_SHIFT=16 (nhân đôi cho MIC_SHIFT=15): nền im lặng RMS ≈ 100-170 (thỉnh thoảng 260-330), đỉnh 250-600; nói thường RMS ≈ 540-870, đỉnh 1400-2640; nói to đầu câu RMS 750-1570, đỉnh tới 4200; vỗ tay chạm 32767. Tỉ lệ giọng/nền chỉ ~5-6 lần và KHÔNG đổi theo MIC_SHIFT. Nền nhiễu nằm sẵn trong dữ liệu mic gửi tới (khi đầu vào bằng 0 thì đầu ra đúng bằng 0, nên code không tạo nhiễu). Kết luận: ngưỡng VAD phải dựa trên MỨC NỀN ĐO ĐƯỢC (làm mượt), KHÔNG dùng số cố định 800/500 như kế hoạch cũ; khoảng cách nền-giọng hẹp nên hysteresis phải cẩn thận.
+- StreamBuffer: 160 KB (≈5,12 giây) trong PSRAM (cấp bằng heap_caps_malloc + bản Static; xác nhận chi tiết trong tài liệu trước khi code). Kích thước này = thời gian khựng mạng tối đa chịu được; lúc bình thường gần rỗng nên không thêm độ trễ. Pre-roll 300 ms là vòng đệm RIÊNG của VAD, không nằm trong StreamBuffer.
+Server (config.py): SAMPLE_RATE/SAMPLE_WIDTH/CHANNELS/BYTES_PER_SECOND=32000, MAX_AUDIO_BYTES=640000 (20 giây; firmware dừng ở 15 giây), NO_FRAME_TIMEOUT_S=6.0 (phải LỚN HƠN 5 giây firmware chịu khựng để firmware là bên quyết định trước), TURN_TIMEOUT_S=25.0, WATCHDOG_TICK_S=0.5, SAVE_WAV=True (tắt ở chặng 7), WAV_DIR="recordings". Hết giới hạn → hủy lượt + ghi log (chưa báo ESP32).
+
+## 7. LỘ TRÌNH
+✅ Chặng 1: nền server (config, protocol, main).
+✅ Chặng 2: Session (turn, hàng đợi gửi, hủy lượt, close, fake_esp32 kịch bản 1-3). Nợ: test _clear_outbox() chưa đủ nhạy, viết lại khi có PCM trong hàng đợi (chặng 5).
+✅ Chặng 3: wsClient (3a kết nối, 3b queue + nút gửi audio_start, 3c nhận tin + OLED + lọc turn, 3d heartbeat).
+Chặng 4: mic, VAD, ghi âm
+- ✅ 4a: micCapture đo RMS/đỉnh, chọn kênh trái, MIC_SHIFT tạm.
+- ✅ 4b-1: server nhận khung nhị phân, watchdog, ghi turn{N}_{giờ}.wav (đã kiểm chứng: normal=64000 byte/file WAV 64.044 byte tiếng tít 2 s; stall và long đều hủy đúng lý do).
+- ✅ 4b-2a: micCapture phát khung 20 ms qua callback (đã kiểm chứng 50 khung/giây, đã dọn delay(100), nâng stack Mic_Task lên 6144 và commit mốc "4b-2a xong").
+- 🔄 4b-2b (tiếp theo): wsClient có StreamBuffer 160 KB trong PSRAM, wsPushAudio(data, len) không chặn, và Network_Task gửi nhị phân. Chưa dùng mic: main.cpp tạm đẩy 2 giây sóng sin tổng hợp để kiểm tra server ghi WAV 64.000 byte tiếng "tít" (tách lỗi đường truyền khỏi lỗi mic).
+- ⬜ 4b-2c: nối mic thật vào StreamBuffer: nhấn nút → gửi audio_start, thu 5 giây, gửi audio_end. Kiểm tra server nhận ≈160.000 byte.
+- ⬜ 4b-3: mở file WAV giọng thật vừa ghi để kiểm tra âm lượng, độ trong và chốt giá trị MIC_SHIFT cuối cùng.
+- ⬜ 4c: vad. Dự kiến: hysteresis theo mức nền làm mượt, pre-roll 300 ms, tối thiểu 200 ms, kết thúc sau ~1200 ms im lặng, tối đa 15 giây, 4 giây không có tiếng thì về chờ; phát sự kiện "bắt đầu nói"/"hết câu". Nên làm trong Mic_Task (cùng chỗ phát tín hiệu kết thúc). Thử riêng VAD (log/OLED) trước khi ghép luồng.
+- ⬜ 4d: ghép VAD vào luồng: audio_start được gửi KHI VAD PHÁT HIỆN TIẾNG NÓI (không phải lúc nhấn nút; nhấn nút chỉ bật chế độ nghe), turn tăng lúc đó; hết câu → audio_end; mất kết nối giữa chừng → hủy lượt; kiểm tra WAV liền câu, không mất đầu từ, không dư đuôi. Có thể xóa micGetLevel/micGetPeak nếu VAD tự tính mức từ khung.
+⬜ Chặng 5: loa (ring buffer PSRAM 256 KB, pre-buffer 300 ms, I2S_NUM_0 TX) + volume (biến trở) + server stream PCM theo nhịp thời gian thực (thử bằng WAV đã ghi). Viết lại test _clear_outbox() nhạy hơn. Quyết định WiFi.setSleep(false) có cần không.
+⬜ Chặng 6: AI và hội thoại: 6a services/stt.py (Groq Whisper, language="vi", bỏ đoạn quá ngắn / AUDIO_TOO_SHORT; Groq nhận CẢ FILE chứ không stream — giữ cả câu trong RAM, đóng gói WAV trong bộ nhớ, KIỂM TRA tài liệu Groq trước khi code; thay _fake_pipeline; xem lại việc _save_wav ghi đồng bộ), 6b llm.py + parser.py (lịch sử trong Session, không lưu qua lần mở máy; tách lệnh LED), 6c tts.py (edge-tts MP3 → PCM 16 kHz bằng thư viện, không cần ffmpeg), 6d controlLed + lệnh command (tên LEDRED, LEDGREEN... giữ nguyên, bàn lại sau), 6e chatbot state machine (IDLE, LISTENING, PROCESSING, SPEAKING, ERROR), 6f music.py + tin music_title. Có thể thử nén IMA-ADPCM sau khi ổn định bằng PCM.
+⬜ Chặng 7: triển khai: ghim requirements.txt (pip freeze trong .venv), thử dựng .venv mới hoàn toàn, lên Render (uvicorn ... --port $PORT, khóa API trong Environment), USE_LOCAL_SERVER=false, beginSSL 443, timeout nối rộng cho gói free "ngủ" (cold start), SAVE_WAV=false (stream thẳng cho Groq, không lưu), đo lại heartbeat/stack qua TLS và proxy, có thể nới NO_FRAME_TIMEOUT_S nếu mạng khựng lâu (nhưng luôn lớn hơn ngưỡng firmware). Tùy chọn: nén IMA-ADPCM, lastUserAction cho portal. Chuyển Docker khi cần thư viện hệ thống.
+
+## 8. NỢ KỸ THUẬT CẦN NHỚ
+Cho state machine 6e (chatbot):
+- Timeout chờ `state` đầu tiên (và chờ phản hồi sau audio_end): đây là lưới bù cho khoảng hở heartbeat (kết nối "nửa chết" mất 12-15 giây mới phát hiện; trong lúc đó tin vẫn "gửi đi" vào khoảng trống) và cho trường hợp server hủy lượt mà không báo ESP32 (hiện chỉ ghi log vì giao thức chưa có mã lỗi; nếu cần thì thêm mã lỗi hai đầu).
+- OLED: chữ lỗi/báo "chưa kết nối" nằm mãi đến khi bị ghi đè; onWsMessage đang tự gọi oledSetText và có bẫy hai task ghi đè nhau (đang chữa tạm bằng WiFi.status()==WL_CONNECTED trong onWsStatus). Khi có state machine, callback chỉ ĐẨY SỰ KIỆN cho chatbot, chatbot là nơi duy nhất quyết định hiện chữ gì.
+- turnCounter chuyển từ main.cpp vào chatbot; vòng "tự quay lại nghe".
+Firmware khác:
+- Kiểm tra sức khỏe mic: số khung/giây lệch xa 50 thì báo lỗi (khung_ngan không bắt được việc mất khung do callback chậm).
+- Hạ CORE_DEBUG_LEVEL khi chạy thật; bản GitHub của config.h từng cũ hơn bản đang chạy (nhớ push).
+- lastUserAction cho portal (đếm thời gian không thao tác thay vì reset theo số thiết bị nối vào AP).
+- Heartbeat 15/5/2 mới thử trên LAN, cần thử lại trên Render (proxy giữa).
+- IP laptop đổi → ESP32 không nối lại được đến khi sửa config.h (DHCP reservation).
+Server:
+- Test _clear_outbox() chưa đủ nhạy (chặng 5); tên tham số `seft` trong _clear_outbox (nếu chưa sửa); _fake_pipeline thay ở 6a; _save_wav ghi đồng bộ (xem lại ở 6a); cờ SAVE_WAV tắt khi lên Render; ghim phiên bản bằng pip freeze.
+- Server cũ (thư mục/branch cũ): bỏ hoàn toàn, không dùng lại code (thiếu turn_id, nuốt lỗi báo "completed", không điều tốc PCM, silenceStartTime không reset, lệnh dừng gửi từ core khác với âm thanh).
+
+## 9. BÀI HỌC ĐÃ RÚT RA (tránh lặp lại)
+- Test chạy được chưa chắc đã kiểm tra đúng thứ cần kiểm; luôn tự hỏi "bài này phá được gì thật".
+- Ngưỡng của bên phía sau (server) phải LỚN HƠN khả năng chịu đựng của bên trước (firmware), nếu không firmware vẫn gửi bù vào lượt đã chết và người dùng không biết vì sao không có trả lời.
+- Tách tầng khi debug: đo mic (4a) → truyền thô + nghe WAV (4b) → VAD (4c) → ghép (4d), để mỗi lỗi chỉ có một chỗ để tìm.
+- Hàm "init" không được chờ; lỗi im lặng nguy hiểm hơn lỗi nhìn thấy được; không tin cảm giác về thời gian khi đọc Serial.
+
+## 10. VIỆC ĐẦU TIÊN Ở CHAT MỚI
+1. Đọc code hiện tại (từ GitHub hoặc từ file người dùng dán): firmware `include/config.h`, `micCapture.h/.cpp`, `wsClient.h/.cpp`, `protocol.h/.cpp`, `src/main.cpp`; server `app/session.py`, `app/main.py`, `app/config.py`. Báo lại cho người dùng điều gì đã khớp và điều gì lệch so với bản bàn giao này.
+2. Yêu cầu người dùng xác nhận hai quy tắc thứ tự ở mục 4.9 (1. Mic_Task là nơi duy nhất vừa đẩy khung cuối vừa phát tín hiệu kết thúc lượt; 2. Network_Task chỉ gửi âm thanh giữa audio_start và audio_end và giữ audio_end đến khi StreamBuffer rỗng) và giải thích bằng số vì sao callback ở 4b-2b không được gửi thẳng lên WebSocket (dựa trên DMA 80 ms và connect() chặn tới 5 giây).
+3. Sau khi người dùng xác nhận, viết code cho bước **4b-2b** (cấp StreamBuffer 160 KB trong PSRAM, `wsPushAudio`, gửi nhị phân trong `Network_Task`, và bài thử 2 giây sóng sin tổng hợp trong `main.cpp`).

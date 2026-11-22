@@ -9,11 +9,9 @@
 #include <WiFi.h>
 #include <stddef.h>
 
-int pressCount = 0;
-
 // ===== BỘ ĐẾM LƯỢT =====
 static volatile int32_t turnCounter = 0;
-static volatile int32_t requestedMicTurn = NO_TURN; //<-----
+static volatile int32_t requestedMicTurn = NO_TURN;
 
 static volatile uint32_t micStartMs = 0;
 static volatile uint32_t micEndMs = 0;
@@ -213,17 +211,18 @@ static void onMicFrame(const int16_t *samples, size_t count)
 
     if (!ok)
     {
-        wsFlagAudioFailure(activeTurn);
-
+        micPushError = static_cast<uint8_t>(pushError);
         micResultFrames = framesSent;
         micResultOk = false;
-        micResultReason = 2; micEndMs = millis();
-        micResultTurn = activeTurn;
+        micResultReason = 2;
+        micEndMs = millis();
 
+        wsFlagAudioFailure(activeTurn);
+        
+        micResultTurn = activeTurn;
         completedTurn = activeTurn;
         activeTurn = NO_TURN;
 
-        micPushError = static_cast<uint8_t>(pushError);
         return;
     }
 
@@ -288,17 +287,20 @@ void loop()
 
         uint8_t pushError = micPushError;
 
-        Serial.printf(
-            "[%lu] [TEST] MIC turn=%ld frames=%lu "
-            "elapsed=%lu ms ok=%d reason=%u pushError=%u\n",
-            (unsigned long)millis(),
-            (long)result,
-            (unsigned long)frames,
-            (unsigned long)(end - start),
-            ok ? 1 : 0,
-            (unsigned)reason,
-            (unsigned)pushError
-        );
+        if ((ok && audio::LOG_MIC_SUCCESS) || (!ok && audio::LOG_MIC_ERROR))
+        {
+            Serial.printf(
+                "[%lu] [TEST] MIC turn=%ld frames=%lu "
+                "elapsed=%lu ms ok=%d reason=%u pushError=%u\n",
+                (unsigned long)millis(),
+                (long)result,
+                (unsigned long)frames,
+                (unsigned long)(end - start),
+                ok ? 1 : 0,
+                (unsigned)reason,
+                (unsigned)pushError
+            );
+        }
     }
 
     delay(10);
