@@ -8,21 +8,13 @@
 #include "config.h"
 #include <WiFi.h>
 #include <stddef.h>
+#include "freertos/FreeRTOS.h"
+#include "freertos/queue.h"
+#include <atomic>
 
 // ===== BỘ ĐẾM LƯỢT =====
 static volatile int32_t turnCounter = 0;
 static volatile int32_t requestedMicTurn = NO_TURN;
-
-static volatile uint32_t micStartMs = 0;
-static volatile uint32_t micEndMs = 0;
-
-static volatile uint8_t micPushError = 0;
-
-// 0: Thanh cong
-// 1: Khung mic sai kich thuoc
-// 2: wsPushAudio that bai
-// 3: Khong gui duoc AudioEnd
-static volatile uint8_t micResultReason = 0;
 
 // ===== HÀM GỌI KHI NHẤN NÚT =====
 static void onButtonPress()
@@ -35,6 +27,29 @@ static void onButtonPress()
         
     requestedMicTurn = turn;
 }
+
+// ===== KẾT QUẢ THU MICRO =====
+enum class MicResultReason : uint8_t
+{
+    Success = 0,
+    InvalidFrame = 1,
+    PushFailed = 2,
+    EndFailed = 3,
+    Replaced = 4
+};
+
+struct MicResult
+{
+    int32_t turn;
+    uint32_t frames;
+    uint32_t elapsedMs;
+    bool ok;
+    MicResultReason reason;
+    WsPushError pushError;
+};
+
+static QueueHandle_t micResultQueue = nullptr;
+static std::atomic<uint32_t> droppedMicResults{0};  //phát hiện queue kết quả đầy
 
 // ===== HÀM GỌI KHI THAY ĐỔI TRẠNG THÁI WIFI =====
 static void onWifiStatus(WifiStatus s)
@@ -127,11 +142,12 @@ static void onWsMessage(const ServerMessage &m)
 	}
 }
 
-// ===== THỬ TẠM 4b-2c =====
-// ===== KET QUA THU MICRO =====
-static volatile int32_t micResultTurn = NO_TURN;
-static volatile uint32_t micResultFrames = 0;
-static volatile bool micResultOk = false;
+// ===== HÀM HỖ TRỢ KIỂM TRA LỖI MIC =====
+static void publishMicResult(const MicResult &result)
+{
+    if (micResultQueue == nullptr || xQueueSend(micResultQueue, &result, 0) != pdTRUE)
+        droppedMicResults.fetch_add(1);
+}
 
 // ===== CALLBACK CHAY TRONG MIC_TASK =====
 static void onMicFrame(const int16_t *samples, size_t count)
@@ -139,37 +155,45 @@ static void onMicFrame(const int16_t *samples, size_t count)
     static int32_t activeTurn = NO_TURN;
     static int32_t completedTurn = NO_TURN;
     static uint32_t framesSent = 0;
+    static uint32_t captureStartMs = 0;
 
-    static int32_t guardTurn = NO_TURN; // đánh dấu turn cần lọc âm thanh 
-    static uint32_t guardStartedMs = 0; // ghi lần đầu thấy yêu cầu mới
+    static int32_t guardTurn = NO_TURN;
+    static uint32_t guardStartedMs = 0;
+
+    //hoan tat bao cao 1 luot, khong gui mang
+    auto finishTurn = [&](int32_t turn, bool ok, MicResultReason reason, WsPushError pushError)
+    {
+        MicResult result = {
+            turn,
+            framesSent,
+            framesSent > 0 ? millis() - captureStartMs : 0,
+            ok,
+            reason,
+            pushError
+        };
+        publishMicResult(result);
+    };
 
     int32_t requested = requestedMicTurn;
-
-    // Chua co yeu cau thu
-    if (requested == NO_TURN)
+    if (requested == NO_TURN || requested == completedTurn)
         return;
 
-    // Luot nay da hoan tat
-    if (requested == completedTurn)
-        return;
-
-    // === PHÁT HIỆN YÊU CẦU LƯỢT MỚI ===
+    // === LƯỢT MỚI ===
     if (requested != guardTurn)
     {
+        //Ghi nhận lượt cũ bị thay thế nếu đang thu
+        if (activeTurn != NO_TURN)
+            finishTurn(activeTurn, false, MicResultReason::Replaced, WsPushError::None);
+
         guardTurn = requested;
         guardStartedMs = millis();
 
-        // Dừng lượt cũ khi có lượt mới
         activeTurn = NO_TURN;
         framesSent = 0;
-
-        micStartMs = 0;
-        micEndMs = 0;
-        micResultReason = 0;
-        micPushError = 0;
+        captureStartMs = 0;
     }
 
-    // === KHOẢNG BẢO VỆ TIẾNG NÚT ===
+    // === BẢO VỆ TIẾNG NÚT ===
     if ((uint32_t)(millis() - guardStartedMs) < audio::BUTTON_AUDIO_GUARD_MS)
         return;
 
@@ -181,78 +205,69 @@ static void onMicFrame(const int16_t *samples, size_t count)
         activeTurn = requested;
     }
 
-    // Trong bai thu nay, moi khung phai du 320 mau
-    if (samples == nullptr || count != audio::FRAME_SAMPLES)
+    // === KIỂM TRA KHUNG PCM ===
+    if (samples == nullptr || count !=  audio::FRAME_SAMPLES)
     {
         wsFlagAudioFailure(activeTurn);
-
-        micResultFrames = framesSent;
-        micResultOk = false;
-
-        micResultReason = 1; micEndMs = millis();
-        micResultTurn = activeTurn;
-
+        finishTurn(activeTurn, false, MicResultReason::InvalidFrame, WsPushError::None);
+        
         completedTurn = activeTurn;
         activeTurn = NO_TURN;
         return;
     }
 
-    if (framesSent == 0)micStartMs = millis();
+    // === DAY PCM ===
+    if (framesSent == 0)
+        captureStartMs = millis();
 
     WsPushError pushError = WsPushError::None;
 
-    // Ghi nguyen khung PCM vao StreamBuffer
-    bool ok = wsPushAudio(
+    bool pushed = wsPushAudio(
         reinterpret_cast<const uint8_t*>(samples),
         count * sizeof(int16_t),
         activeTurn,
         &pushError
     );
 
-    if (!ok)
+    if (!pushed)
     {
-        micPushError = static_cast<uint8_t>(pushError);
-        micResultFrames = framesSent;
-        micResultOk = false;
-        micResultReason = 2;
-        micEndMs = millis();
-
         wsFlagAudioFailure(activeTurn);
-        
-        micResultTurn = activeTurn;
+        finishTurn(activeTurn, false, MicResultReason::PushFailed, pushError);
         completedTurn = activeTurn;
         activeTurn = NO_TURN;
-
         return;
     }
 
     framesSent++;
 
-    // Chua du 5 giay, tiep tuc thu
+    // === CHƯA ĐỦ 250 KHUNG ===
     if (framesSent < audio::MIC_TEST_FRAMES)
         return;
 
-    // Khung thu 250 da ghi thanh cong.
-    // Yeu cau ket thuc ngay trong Mic_Task.
-    bool ended = wsSendControl(
-        ClientMsg::AudioEnd,
-        activeTurn
-    );
-
+    bool ended = wsSendControl(ClientMsg::AudioEnd, activeTurn);
     if (!ended)
-    {
-        micResultReason = 3; micEndMs = millis();
         wsFlagAudioFailure(activeTurn);
-    } else {
-        micResultReason = 0; micEndMs = millis();
-    }
 
-    micResultFrames = framesSent;
-    micResultOk = ended;
-    micResultTurn = activeTurn;
+    finishTurn(
+        activeTurn, ended,
+        ended ? MicResultReason::Success :
+                MicResultReason::EndFailed,
+        WsPushError::None
+    );
 
     completedTurn = activeTurn;
     activeTurn = NO_TURN;
+}
+
+// === TẠO QUEUE GỬI KẾT QUẢ TỪ MIC_TASK -> LOOP ===
+static void createdMicResultQueue()
+{
+    micResultQueue = xQueueCreate(audio::MIC_RESULT_QUEUE_LEN, sizeof(MicResult));
+    if (micResultQueue == nullptr)
+        Serial.println("[MAIN] mic result queue FAIL");
+    else
+        Serial.println("[MAIN] mic result queue OK");  
+
 }
 
 // ===== HÀM SETUP =====
@@ -264,43 +279,52 @@ void setup()
 	initButton(onButtonPress);
 	initWs(onWsStatus, onWsMessage);
 	initWifi(onWifiStatus);
+    createdMicResultQueue();
 	initMic(onMicFrame);
 }
 
 // ===== HÀM LOOP =====
 void loop()
 {
-    static int32_t lastReportedTurn = NO_TURN;
+    MicResult result;
 
-    int32_t result = micResultTurn;
-
-    if (result != NO_TURN &&
-        result != lastReportedTurn)
+    if (micResultQueue != nullptr)
     {
-        lastReportedTurn = result;
-
-        uint32_t start = micStartMs;
-        uint32_t end = micEndMs;
-        uint8_t reason = micResultReason;
-        uint32_t frames = micResultFrames;
-        bool ok = micResultOk;
-
-        uint8_t pushError = micPushError;
-
-        if ((ok && audio::LOG_MIC_SUCCESS) || (!ok && audio::LOG_MIC_ERROR))
+        while (xQueueReceive(micResultQueue, &result, 0) == pdTRUE)
         {
-            Serial.printf(
-                "[%lu] [TEST] MIC turn=%ld frames=%lu "
-                "elapsed=%lu ms ok=%d reason=%u pushError=%u\n",
-                (unsigned long)millis(),
-                (long)result,
-                (unsigned long)frames,
-                (unsigned long)(end - start),
-                ok ? 1 : 0,
-                (unsigned)reason,
-                (unsigned)pushError
-            );
+            bool isError =
+                result.reason != MicResultReason::Success &&
+                result.reason != MicResultReason::Replaced;
+
+            bool shouldLog =
+                (result.ok && audio::LOG_MIC_SUCCESS) ||
+                (isError && audio::LOG_MIC_ERROR);
+
+            if (shouldLog)
+            {
+                Serial.printf(
+                    "[%lu] [MIC] turn=%ld frames=%lu "
+                    "elapsed=%lu ms ok=%d reason=%u pushError=%u\n",
+                    (unsigned long)millis(),
+                    (long)result.turn,
+                    (unsigned long)result.frames,
+                    (unsigned long)result.elapsedMs,
+                    result.ok ? 1 : 0,
+                    (unsigned)result.reason,
+                    (unsigned)result.pushError
+                );
+            }
         }
+    }
+
+    uint32_t lost = droppedMicResults.exchange(0);
+
+    if (lost > 0)
+    {
+        Serial.printf(
+            "[MIC] Mat %lu ban ghi ket qua\n",
+            (unsigned long)lost
+        );
     }
 
     delay(10);

@@ -51,7 +51,7 @@ namespace net
 
 	// ----- WEBSOCKET -----
 	constexpr bool USE_LOCAL_SERVER = true;
-	constexpr const char *WS_HOST = USE_LOCAL_SERVER ? "192.168.1.227" : "chatbot-minny.onrender.com";
+	constexpr const char *WS_HOST = USE_LOCAL_SERVER ? "192.168.1.7" : "chatbot-minny.onrender.com";
 	constexpr uint16_t WS_PORT = USE_LOCAL_SERVER ? 8000 : 443;
 	constexpr bool WS_USE_SSL = !USE_LOCAL_SERVER;
 	constexpr const char *WS_PATH = "/ws/minny";
@@ -108,8 +108,10 @@ namespace audio {
 
 	constexpr uint32_t BUTTON_AUDIO_GUARD_MS = 200; // Lọc âm thanh nút bấm đầu file wav
 
-	constexpr bool LOG_MIC_SUCCESS = false;
+	constexpr bool LOG_MIC_SUCCESS = true;
 	constexpr bool LOG_MIC_ERROR = true;
+
+	constexpr uint8_t MIC_RESULT_QUEUE_LEN = 8;
 }
 
 #endif // CONFIG_H
