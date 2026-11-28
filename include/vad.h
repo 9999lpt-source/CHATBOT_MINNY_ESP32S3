@@ -30,6 +30,7 @@ struct VadStatus
 {
     VadState state;
     uint32_t framesProcessed;
+    uint16_t rms;
 };
 
 void vadReset();                                                // Reset vad

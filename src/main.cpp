@@ -4,6 +4,7 @@
 #include "wifiManager.h"
 #include "wsClient.h"
 #include "protocol.h"
+#include "vad.h"
 #include "micCapture.h"
 #include "config.h"
 #include <WiFi.h>
@@ -270,6 +271,49 @@ static void createdMicResultQueue()
 
 }
 
+static void testVadRms()
+{
+    static int16_t samples[audio::FRAME_SAMPLES];
+
+    vadReset();
+    vadStartListening();
+
+    // A: Im lang
+    for (size_t i = 0; i < audio::FRAME_SAMPLES; i++)
+        samples[i] = 0;
+
+    vadProcessFrame(samples, audio::FRAME_SAMPLES);
+
+    Serial.printf("[VAD] A rms=%u\n",
+                  (unsigned)vadGetStatus().rms);
+
+    // B: Bien do duong khong doi
+    for (size_t i = 0; i < audio::FRAME_SAMPLES; i++)
+        samples[i] = 1000;
+
+    vadProcessFrame(samples, audio::FRAME_SAMPLES);
+
+    Serial.printf("[VAD] B rms=%u\n",
+                  (unsigned)vadGetStatus().rms);
+
+    // C: Xen ke duong/am
+    for (size_t i = 0; i < audio::FRAME_SAMPLES; i++)
+        samples[i] = (i % 2 == 0) ? 1000 : -1000;
+
+    vadProcessFrame(samples, audio::FRAME_SAMPLES);
+
+    VadStatus status = vadGetStatus();
+
+    Serial.printf(
+        "[VAD] C rms=%u frames=%lu state=%u\n",
+        (unsigned)status.rms,
+        (unsigned long)status.framesProcessed,
+        (unsigned)status.state
+    );
+
+    vadReset();
+}
+
 // ===== HÀM SETUP =====
 void setup()
 {
@@ -279,6 +323,7 @@ void setup()
 	initButton(onButtonPress);
 	initWs(onWsStatus, onWsMessage);
 	initWifi(onWifiStatus);
+    testVadRms();
     createdMicResultQueue();
 	initMic(onMicFrame);
 }
